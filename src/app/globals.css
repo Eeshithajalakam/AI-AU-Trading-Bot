@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+@theme {
+  --color-background: #0a0a0c;
+  --color-foreground: #ededed;
+  --color-muted: #1f1f23;
+  --color-muted-foreground: #a1a1aa;
+  
+  --color-primary: #f59e0b; /* Gold/Amber for XAU */
+  --color-primary-foreground: #111111;
+  
+  --color-up: #10b981; /* Green for bullish */
+  --color-down: #ef4444; /* Red for bearish */
+  
+  --color-card: rgba(24, 24, 27, 0.4);
+  --color-card-foreground: #ededed;
+  --color-card-border: rgba(255, 255, 255, 0.08);
+  
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  
+  --animate-pulse-slow: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@utility glass {
+  background: var(--color-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--color-card-border);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+}
+
+@utility glass-hover {
+  @apply transition-all duration-300;
+  &:hover {
+    background: rgba(39, 39, 42, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  }
+}
+
+:root {
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-family: var(--font-sans);
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Custom Scrollbar for dashboard feel */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-muted);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted-foreground);
+}
