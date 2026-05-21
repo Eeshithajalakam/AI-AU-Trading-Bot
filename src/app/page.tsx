@@ -4,6 +4,7 @@ import { MarketOverview } from "@/components/dashboard/market-overview";
 import { AISignals } from "@/components/dashboard/ai-signals";
 import { TradeHistory } from "@/components/dashboard/trade-history";
 import { RiskMetrics } from "@/components/dashboard/risk-metrics";
+import { NewsTerminal } from "@/components/dashboard/news-terminal";
 import { WebSocketManager } from "@/components/dashboard/websocket-manager";
 
 export default function Dashboard() {
@@ -33,10 +34,15 @@ export default function Dashboard() {
                 <AISignals />
               </div>
               
-              {/* Bottom Row: Trades and Analytics */}
+              {/* Bottom Row: Trades, Analytics, and News */}
               <div className="grid grid-cols-1 gap-6 xl:grid-cols-12 pb-6">
-                <TradeHistory />
-                <RiskMetrics />
+                <div className="xl:col-span-5">
+                  <TradeHistory />
+                </div>
+                <div className="xl:col-span-3">
+                  <RiskMetrics />
+                </div>
+                <NewsTerminal />
               </div>
               
             </div>

@@ -1,6 +1,13 @@
-import { Bell, Search, Zap } from "lucide-react";
+"use client";
+
+import { useState } from "react";
+import { Bell, Search, Zap, Settings as SettingsIcon } from "lucide-react";
+import { MT5Switcher } from "./mt5-switcher";
+import { RiskSettingsModal } from "../dashboard/risk-settings-modal";
 
 export function Header() {
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
   return (
     <header className="flex h-16 items-center justify-between border-b border-white/5 bg-[#0a0a0c]/80 px-6 backdrop-blur-xl">
       <div className="flex items-center gap-4">
@@ -9,10 +16,7 @@ export function Header() {
           <span className="text-xs font-medium text-slate-300">XAU/USD Market Open</span>
         </div>
         <div className="h-4 w-px bg-white/10" />
-        <div className="text-sm font-medium">
-          <span className="text-slate-400">Balance: </span>
-          <span className="text-white">$124,592.45</span>
-        </div>
+        <MT5Switcher />
       </div>
       
       <div className="flex items-center gap-4">
@@ -32,11 +36,23 @@ export function Header() {
           </span>
         </button>
         
+        <button 
+          onClick={() => setIsSettingsOpen(true)}
+          className="relative rounded-full p-2 text-slate-400 hover:bg-white/10 hover:text-white transition-colors"
+        >
+          <SettingsIcon className="h-5 w-5" />
+        </button>
+        
         <button className="flex items-center gap-2 rounded-full bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-500 hover:bg-amber-500/20 transition-colors border border-amber-500/20">
           <Zap className="h-4 w-4" />
           Auto-Trade Active
         </button>
       </div>
+      
+      <RiskSettingsModal 
+        isOpen={isSettingsOpen} 
+        onClose={() => setIsSettingsOpen(false)} 
+      />
     </header>
   );
 }

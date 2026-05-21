@@ -3,10 +3,9 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 const navigation = [
-  { name: "Dashboard", href: "#", icon: LayoutDashboard, current: true },
+  { name: "Dashboard", href: "/", icon: LayoutDashboard, current: true },
   { name: "Markets", href: "#", icon: BarChart3, current: false },
-  { name: "Positions", href: "#", icon: Wallet, current: false },
-  { name: "History", href: "#", icon: History, current: false },
+  { name: "Backtesting", href: "/backtest", icon: History, current: false },
   { name: "AI Signals", href: "#", icon: Activity, current: false },
   { name: "Analytics", href: "#", icon: TrendingUp, current: false },
 ];

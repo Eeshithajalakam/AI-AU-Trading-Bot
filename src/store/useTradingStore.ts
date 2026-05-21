@@ -70,8 +70,9 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
     // Check for high confidence signals to trigger notifications
     newSignals.forEach(newSig => {
       const oldSig = state.signals.find(s => s.id === newSig.id);
-      if (newSig.active && newSig.confidence >= 90 && (!oldSig || oldSig.confidence < 90)) {
-        toast.success(`High Confidence ${newSig.type} Signal: ${newSig.asset} @ ${newSig.entry}`, {
+      // Lowered threshold to 55 since we updated the backend confidence scoring
+      if (newSig.active && newSig.confidence >= 55 && (!oldSig || oldSig.confidence < 55)) {
+        toast.success(`AI ${newSig.type} Signal: ${newSig.asset} @ ${newSig.entry}`, {
           duration: 5000,
           position: 'top-right',
           style: {
@@ -84,6 +85,15 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
             secondary: '#1f1f23',
           },
         });
+        
+        // Native Browser Push Notification
+        if (typeof window !== 'undefined' && 'Notification' in window) {
+          if (Notification.permission === 'granted') {
+            new Notification(`AuTrade AI: ${newSig.type} Signal`, {
+              body: `${newSig.asset} Entry: ${newSig.entry} (Conf: ${newSig.confidence}%)`,
+            });
+          }
+        }
       }
     });
 
@@ -111,6 +121,13 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
           position: 'bottom-right',
           style: { background: '#1f1f23', color: '#ededed', border: '1px solid rgba(255,255,255,0.1)' }
         });
+        
+        // Request Browser Push Notification Permission
+        if (typeof window !== 'undefined' && 'Notification' in window) {
+          if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+            Notification.requestPermission();
+          }
+        }
       };
       
       ws.onmessage = (event) => {
@@ -124,6 +141,18 @@ export const useTradingStore = create<TradingStore>((set, get) => ({
           } else if (data.type === 'INITIAL_DATA') {
             get().setInitialHistory(data.history);
             get().updateSignals(data.signals);
+          } else if (data.type === 'NOTIFICATION') {
+            const { title, message, level } = data;
+            
+            // Toast
+            if (level === "CRITICAL" || level === "ERROR") toast.error(`${title}\n${message}`);
+            else if (level === "SUCCESS") toast.success(`${title}\n${message}`);
+            else toast(`${title}\n${message}`, { style: { background: '#1f1f23', color: '#fff' }});
+            
+            // Native Push
+            if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+               new Notification(title, { body: message });
+            }
           }
         } catch (err) {
           console.error('Failed to parse WebSocket message', err);
