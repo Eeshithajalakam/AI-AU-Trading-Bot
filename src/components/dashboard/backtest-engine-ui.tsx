@@ -35,7 +35,8 @@ export function BacktestEngineUI() {
     setLoading(true);
     setReport(null);
     try {
-      const res = await fetch(`http://localhost:8000/api/backtest/run?days=${days}&capital=${capital}`, {
+      const { getApiUrl } = await import("@/lib/api");
+      const res = await fetch(getApiUrl(`/api/backtest/run?days=${days}&capital=${capital}`), {
         method: "POST"
       });
       const data = await res.json();
@@ -136,7 +137,7 @@ export function BacktestEngineUI() {
                   <Tooltip 
                     contentStyle={{ backgroundColor: '#0f172a', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '8px', color: '#fff' }}
                     itemStyle={{ color: '#fff' }}
-                    formatter={(value: number) => [`$${value.toFixed(2)}`, 'Equity']}
+                    formatter={(value) => [`$${Number(value ?? 0).toFixed(2)}`, 'Equity']}
                     labelFormatter={() => ''}
                   />
                   <Area type="monotone" dataKey="capital" stroke="#8b5cf6" strokeWidth={2} fillOpacity={1} fill="url(#colorCapital)" />

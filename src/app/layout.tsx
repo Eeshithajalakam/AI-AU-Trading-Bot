@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { Toaster } from "react-hot-toast";
+import { ThemeProvider } from "@/components/providers/theme-provider";
 import "./globals.css";
 
 const inter = Inter({
@@ -10,22 +11,20 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "AI XAU/USD Trading | Premium Terminal",
-  description: "Institutional-grade AI-powered gold trading dashboard",
+  title: "AI AU Trading | XAU/USD Platform",
+  description: "Institutional-grade AI-powered gold trading platform",
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className="dark">
-      <body
-        className={`${inter.variable} antialiased bg-[#0a0a0c] text-slate-200 min-h-screen flex flex-col`}
-      >
-        {children}
-        <Toaster />
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <body className={`${inter.variable} antialiased bg-[var(--background)] text-[var(--foreground)] min-h-screen`}>
+        <ThemeProvider>
+          {children}
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );

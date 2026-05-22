@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Bell, Search, Zap, Settings as SettingsIcon } from "lucide-react";
+import { Bell, Search, Settings as SettingsIcon, Sun, Moon } from "lucide-react";
+import { useTheme } from "@/components/providers/theme-provider";
 import { MT5Switcher } from "./mt5-switcher";
 import { RiskSettingsModal } from "../dashboard/risk-settings-modal";
 
 export function Header() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <header className="flex h-16 items-center justify-between border-b border-white/5 bg-[#0a0a0c]/80 px-6 backdrop-blur-xl">
@@ -36,16 +38,19 @@ export function Header() {
           </span>
         </button>
         
-        <button 
+        <button
+          onClick={toggleTheme}
+          className="rounded-full p-2 text-slate-400 hover:bg-white/10 hover:text-white transition-colors"
+          aria-label="Toggle theme"
+        >
+          {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+        </button>
+
+        <button
           onClick={() => setIsSettingsOpen(true)}
           className="relative rounded-full p-2 text-slate-400 hover:bg-white/10 hover:text-white transition-colors"
         >
           <SettingsIcon className="h-5 w-5" />
-        </button>
-        
-        <button className="flex items-center gap-2 rounded-full bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-500 hover:bg-amber-500/20 transition-colors border border-amber-500/20">
-          <Zap className="h-4 w-4" />
-          Auto-Trade Active
         </button>
       </div>
       

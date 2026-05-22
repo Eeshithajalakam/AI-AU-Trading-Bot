@@ -1,26 +1,14 @@
-from fastapi import APIRouter, HTTPException
-from api.websockets import ai_service
-import datetime
+from fastapi import APIRouter
+from core.deps import ai_service
 
 router = APIRouter(prefix="/api/indicators", tags=["Indicators"])
 
+
 @router.get("/xauusd")
-async def get_xauusd_indicators():
-    """
-    Returns the latest technical indicator snapshot for XAU/USD.
-    Used for frontend dashboard visualization (TradingView-style).
-    """
-    snapshot = ai_service.latest_indicators_snapshot
-    
-    if not snapshot:
-        # If the websocket loop hasn't run yet or no data
-        return {
-            "status": "waiting",
-            "message": "Indicators are still calculating. Please wait a few seconds."
-        }
-        
+async def get_latest_indicators():
+    if not ai_service.latest_indicators_snapshot:
+        return {"status": "waiting", "message": "Indicators not yet computed."}
     return {
         "asset": "XAU/USD",
-        "timestamp": datetime.datetime.utcnow().isoformat(),
-        "indicators": snapshot
+        "indicators": ai_service.latest_indicators_snapshot,
     }

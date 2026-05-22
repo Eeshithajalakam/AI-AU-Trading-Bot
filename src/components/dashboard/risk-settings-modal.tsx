@@ -30,7 +30,8 @@ export function RiskSettingsModal({ isOpen, onClose }: { isOpen: boolean; onClos
   const fetchSettings = async () => {
     setLoading(true);
     try {
-      const res = await fetch("http://localhost:8000/api/settings/risk");
+      const { getApiUrl } = await import("@/lib/api");
+      const res = await fetch(getApiUrl("/api/settings/risk"));
       if (res.ok) {
         setSettings(await res.json());
       }
@@ -44,7 +45,8 @@ export function RiskSettingsModal({ isOpen, onClose }: { isOpen: boolean; onClos
   const saveSettings = async () => {
     setSaving(true);
     try {
-      const res = await fetch("http://localhost:8000/api/settings/risk", {
+      const { getApiUrl } = await import("@/lib/api");
+      const res = await fetch(getApiUrl("/api/settings/risk"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(settings)

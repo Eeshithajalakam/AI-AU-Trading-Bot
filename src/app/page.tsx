@@ -6,6 +6,10 @@ import { TradeHistory } from "@/components/dashboard/trade-history";
 import { RiskMetrics } from "@/components/dashboard/risk-metrics";
 import { NewsTerminal } from "@/components/dashboard/news-terminal";
 import { WebSocketManager } from "@/components/dashboard/websocket-manager";
+import { TrainingProgress } from "@/components/dashboard/training-progress";
+import { MT5Dashboard } from "@/components/dashboard/mt5-dashboard";
+import { PnlTracker } from "@/components/dashboard/pnl-tracker";
+import { EquityCurve } from "@/components/dashboard/equity-curve";
 
 export default function Dashboard() {
   return (
@@ -31,10 +35,19 @@ export default function Dashboard() {
               {/* Top Row: Chart and Signals */}
               <div className="grid grid-cols-1 gap-6 xl:grid-cols-12">
                 <MarketOverview />
-                <AISignals />
+                <div className="xl:col-span-4 space-y-6">
+                  <AISignals />
+                  <TrainingProgress />
+                </div>
               </div>
+
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 xl:grid-cols-4">
+                <PnlTracker />
+                <MT5Dashboard />
+              </div>
+
+              <EquityCurve />
               
-              {/* Bottom Row: Trades, Analytics, and News */}
               <div className="grid grid-cols-1 gap-6 xl:grid-cols-12 pb-6">
                 <div className="xl:col-span-5">
                   <TradeHistory />

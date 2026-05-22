@@ -8,7 +8,7 @@ services:
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/trading_db
       - REDIS_URL=redis://redis:6379/0
-      - JWT_SECRET=your_super_secret_key_change_in_prod
+      - SECRET_KEY=your_super_secret_key_change_in_prod
       - ENVIRONMENT=production
     depends_on:
       - db

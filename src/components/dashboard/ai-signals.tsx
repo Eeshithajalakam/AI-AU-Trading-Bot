@@ -17,7 +17,7 @@ export function AISignals() {
 
   if (!mounted || signals.length === 0) {
     return (
-      <Card className="col-span-full xl:col-span-4 flex flex-col min-h-[450px]">
+      <Card className="flex flex-col min-h-[200px]">
         <CardHeader className="flex flex-row items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="rounded-md bg-indigo-500/10 p-2 border border-indigo-500/20">
@@ -34,7 +34,7 @@ export function AISignals() {
   }
 
   return (
-    <Card className="col-span-full xl:col-span-4 flex flex-col relative overflow-hidden">
+    <Card className="flex flex-col relative overflow-hidden min-h-[220px]">
       <CardHeader className="flex flex-row items-center justify-between relative z-10">
         <div className="flex items-center gap-2">
           <div className="rounded-md bg-indigo-500/10 p-2 border border-indigo-500/20">

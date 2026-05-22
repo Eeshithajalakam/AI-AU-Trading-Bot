@@ -6,9 +6,19 @@ export interface PricePoint {
   price: number;
 }
 
+export interface CandlePoint {
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+}
+
 export interface TradeSignal {
   id: string;
-  type: "LONG" | "SHORT";
+  type: "LONG" | "SHORT" | "NEUTRAL";
+  action?: string;
   asset: string;
   confidence: number;
   entry: number;
@@ -16,190 +26,184 @@ export interface TradeSignal {
   stopLoss: number;
   timestamp: number;
   active: boolean;
+  trend?: string;
+}
+
+export interface TrainingState {
+  job_id?: number | null;
+  status: string;
+  progress_pct: number;
+  current_epoch?: number;
+  total_epochs?: number;
+  train_loss?: number | null;
+  val_mae?: number | null;
+  val_rmse?: number | null;
+  directional_accuracy?: number | null;
+  message?: string;
+}
+
+export interface RiskState {
+  daily_pnl: number;
+  daily_trades: number;
+  emergency_shutdown: boolean;
+  account?: {
+    balance?: number;
+    equity?: number;
+    profit?: number;
+    paper?: boolean;
+  };
+  paper_mode?: boolean;
+  auto_trade?: boolean;
 }
 
 interface TradingStore {
-  // Connection State
   isConnected: boolean;
   setIsConnected: (status: boolean) => void;
   reconnectAttempts: number;
-  
-  // Market Data
   currentPrice: number;
   priceHistory: PricePoint[];
-  updatePrice: (price: number, timestamp: string) => void;
-  setInitialHistory: (history: PricePoint[]) => void;
-  
-  // Signals
+  candles: CandlePoint[];
   signals: TradeSignal[];
+  training: TrainingState | null;
+  risk: RiskState | null;
+  lastTrade: Record<string, unknown> | null;
+  updatePrice: (price: number, timestamp: string, ohlcv?: CandlePoint) => void;
+  setInitialHistory: (history: PricePoint[], candles?: CandlePoint[]) => void;
   updateSignals: (signals: TradeSignal[]) => void;
-  
-  // WS Methods
+  setTraining: (t: TrainingState) => void;
+  setRisk: (r: RiskState) => void;
+  setLastTrade: (t: Record<string, unknown>) => void;
   connectWebSocket: (url: string) => void;
   disconnectWebSocket: () => void;
 }
 
 let wsInstance: WebSocket | null = null;
-let reconnectTimeout: NodeJS.Timeout | null = null;
-const MAX_HISTORY_POINTS = 60; // Keep last 60 data points
+let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+let pingInterval: ReturnType<typeof setInterval> | null = null;
+const MAX_HISTORY_POINTS = 120;
 
 export const useTradingStore = create<TradingStore>((set, get) => ({
   isConnected: false,
   reconnectAttempts: 0,
   setIsConnected: (status) => set({ isConnected: status }),
-  
-  currentPrice: 2350.00,
+
+  currentPrice: 2350.0,
   priceHistory: [],
-  
-  updatePrice: (price, timestamp) => set((state) => {
-    const newPoint = { time: timestamp, price };
-    const newHistory = [...state.priceHistory, newPoint];
-    if (newHistory.length > MAX_HISTORY_POINTS) {
-      newHistory.shift();
-    }
-    return { 
-      currentPrice: price, 
-      priceHistory: newHistory 
-    };
-  }),
-  
-  setInitialHistory: (history) => set({ priceHistory: history, currentPrice: history[history.length - 1]?.price || 2350.00 }),
-  
+  candles: [],
   signals: [],
+  training: null,
+  risk: null,
+  lastTrade: null,
+
+  updatePrice: (price, timestamp, ohlcv) => set((state) => {
+    const newHistory = [...state.priceHistory, { time: timestamp, price }];
+    if (newHistory.length > MAX_HISTORY_POINTS) newHistory.shift();
+    let newCandles = state.candles;
+    if (ohlcv) {
+      newCandles = [...state.candles, ohlcv];
+      if (newCandles.length > MAX_HISTORY_POINTS) newCandles.shift();
+    }
+    return { currentPrice: price, priceHistory: newHistory, candles: newCandles };
+  }),
+
+  setInitialHistory: (history, candles) => set({
+    priceHistory: history,
+    candles: candles || [],
+    currentPrice: history[history.length - 1]?.price || 2350.0,
+  }),
+
   updateSignals: (newSignals) => set((state) => {
-    // Check for high confidence signals to trigger notifications
-    newSignals.forEach(newSig => {
-      const oldSig = state.signals.find(s => s.id === newSig.id);
-      // Lowered threshold to 55 since we updated the backend confidence scoring
+    newSignals.forEach((newSig) => {
+      const oldSig = state.signals.find((s) => s.id === newSig.id);
       if (newSig.active && newSig.confidence >= 55 && (!oldSig || oldSig.confidence < 55)) {
-        toast.success(`AI ${newSig.type} Signal: ${newSig.asset} @ ${newSig.entry}`, {
-          duration: 5000,
-          position: 'top-right',
-          style: {
-            background: '#1f1f23',
-            color: '#ededed',
-            border: '1px solid rgba(16, 185, 129, 0.2)',
-          },
-          iconTheme: {
-            primary: '#10b981',
-            secondary: '#1f1f23',
-          },
-        });
-        
-        // Native Browser Push Notification
-        if (typeof window !== 'undefined' && 'Notification' in window) {
-          if (Notification.permission === 'granted') {
-            new Notification(`AuTrade AI: ${newSig.type} Signal`, {
-              body: `${newSig.asset} Entry: ${newSig.entry} (Conf: ${newSig.confidence}%)`,
-            });
-          }
-        }
+        toast.success(`AI ${newSig.type}: ${newSig.asset} @ ${newSig.entry}`);
       }
     });
-
     return { signals: newSignals };
   }),
-  
+
+  setTraining: (training) => set({ training }),
+  setRisk: (risk) => set({ risk }),
+  setLastTrade: (lastTrade) => set({ lastTrade }),
+
   connectWebSocket: (url: string) => {
-    if (wsInstance) {
-      wsInstance.close();
-    }
-    
-    // Clear any pending reconnects
-    if (reconnectTimeout) {
-      clearTimeout(reconnectTimeout);
-      reconnectTimeout = null;
-    }
-    
+    if (wsInstance) wsInstance.close();
+    if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    if (pingInterval) clearInterval(pingInterval);
+
     try {
       const ws = new WebSocket(url);
-      
+
       ws.onopen = () => {
-        console.log('WebSocket Connected');
         set({ isConnected: true, reconnectAttempts: 0 });
-        toast.success('Live trading feed connected', {
-          position: 'bottom-right',
-          style: { background: '#1f1f23', color: '#ededed', border: '1px solid rgba(255,255,255,0.1)' }
-        });
-        
-        // Request Browser Push Notification Permission
-        if (typeof window !== 'undefined' && 'Notification' in window) {
-          if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
-            Notification.requestPermission();
-          }
-        }
+        toast.success('Live feed connected');
+        pingInterval = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) ws.send('ping');
+        }, 25000);
       };
-      
+
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          
-          if (data.type === 'PRICE_UPDATE') {
-            get().updatePrice(data.price, data.timestamp);
-          } else if (data.type === 'SIGNAL_UPDATE') {
-            get().updateSignals(data.signals);
-          } else if (data.type === 'INITIAL_DATA') {
-            get().setInitialHistory(data.history);
-            get().updateSignals(data.signals);
-          } else if (data.type === 'NOTIFICATION') {
-            const { title, message, level } = data;
-            
-            // Toast
-            if (level === "CRITICAL" || level === "ERROR") toast.error(`${title}\n${message}`);
-            else if (level === "SUCCESS") toast.success(`${title}\n${message}`);
-            else toast(`${title}\n${message}`, { style: { background: '#1f1f23', color: '#fff' }});
-            
-            // Native Push
-            if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-               new Notification(title, { body: message });
-            }
+          switch (data.type) {
+            case 'PRICE_UPDATE':
+              get().updatePrice(data.price, data.timestamp, data.ohlcv);
+              break;
+            case 'SIGNAL_UPDATE':
+              get().updateSignals(data.signals);
+              break;
+            case 'INITIAL_DATA':
+              get().setInitialHistory(data.history, data.candles);
+              if (data.price) set({ currentPrice: data.price });
+              if (data.signals?.length) get().updateSignals(data.signals);
+              if (data.training) get().setTraining(data.training);
+              if (data.account) get().setRisk({ daily_pnl: 0, daily_trades: 0, emergency_shutdown: false, account: data.account });
+              break;
+            case 'TRAINING_UPDATE':
+              get().setTraining(data.training);
+              break;
+            case 'RISK_UPDATE':
+              get().setRisk({
+                daily_pnl: data.daily_pnl,
+                daily_trades: data.daily_trades,
+                emergency_shutdown: data.emergency_shutdown,
+                account: data.account,
+                paper_mode: data.paper_mode,
+                auto_trade: data.auto_trade,
+              });
+              break;
+            case 'TRADE_UPDATE':
+              get().setLastTrade(data.trade);
+              if (data.trade?.status === 'success') toast.success('Trade executed');
+              break;
+            case 'NOTIFICATION':
+              toast(`${data.title}: ${data.message}`);
+              break;
           }
         } catch (err) {
-          console.error('Failed to parse WebSocket message', err);
+          console.error('WS parse error', err);
         }
       };
-      
+
       ws.onclose = () => {
-        console.log('WebSocket Disconnected');
         set({ isConnected: false });
-        
-        // Auto-reconnect with exponential backoff
+        if (pingInterval) clearInterval(pingInterval);
         const attempts = get().reconnectAttempts;
-        const delay = Math.min(1000 * Math.pow(2, attempts), 30000); // max 30s delay
-        
-        console.log(`Attempting reconnect in ${delay}ms (Attempt ${attempts + 1})`);
-        if (attempts === 0) {
-          toast.error('Connection lost. Attempting to reconnect...', {
-            position: 'bottom-right',
-            style: { background: '#1f1f23', color: '#ededed', border: '1px solid rgba(239, 68, 68, 0.2)' }
-          });
-        }
-        
-        set((state) => ({ reconnectAttempts: state.reconnectAttempts + 1 }));
-        
-        reconnectTimeout = setTimeout(() => {
-          get().connectWebSocket(url);
-        }, delay);
+        const delay = Math.min(1000 * Math.pow(2, attempts), 30000);
+        set({ reconnectAttempts: attempts + 1 });
+        reconnectTimeout = setTimeout(() => get().connectWebSocket(url), delay);
       };
-      
-      ws.onerror = (error) => {
-        console.error('WebSocket Error:', error);
-      };
-      
+
+      ws.onerror = () => console.error('WebSocket error');
       wsInstance = ws;
-    } catch (error) {
-      console.error('WebSocket Connection Failed:', error);
+    } catch (e) {
+      console.error('WS connect failed', e);
     }
   },
-  
+
   disconnectWebSocket: () => {
-    if (reconnectTimeout) {
-      clearTimeout(reconnectTimeout);
-      reconnectTimeout = null;
-    }
-    if (wsInstance) {
-      wsInstance.close();
-      wsInstance = null;
-    }
-  }
+    if (pingInterval) clearInterval(pingInterval);
+    if (reconnectTimeout) clearTimeout(reconnectTimeout);
+    if (wsInstance) { wsInstance.close(); wsInstance = null; }
+  },
 }));

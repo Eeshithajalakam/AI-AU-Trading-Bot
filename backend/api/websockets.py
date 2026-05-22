@@ -1,200 +1,214 @@
-# pyrefly: ignore [missing-import]
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 import json
 import asyncio
-import time
 import uuid
-import pandas as pd
-from datetime import datetime, timedelta
-import random
+import logging
+from datetime import datetime
 from typing import List
 
-from ai.service import AIService
-from trading.order_manager import OrderManager
+from core.config import settings
+from core.database import AsyncSessionLocal
+from core.deps import ai_service, order_manager
+from db.repository import SignalRepository, TradeRepository, AnalyticsRepository
+from services.market_engine import market_engine
+from services.training_state import training_state
 
-# Initialize AI Service
-ai_service = AIService()
-
-# Initialize Order Manager
-order_manager = OrderManager()
-
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
+
 class ConnectionManager:
-    def __init__(self):
+    def __init__(self) -> None:
         self.active_connections: List[WebSocket] = []
 
-    async def connect(self, websocket: WebSocket):
+    async def connect(self, websocket: WebSocket) -> None:
         await websocket.accept()
         self.active_connections.append(websocket)
-        print(f"Client connected. Total: {len(self.active_connections)}")
+        logger.info("WS connected (%d clients)", len(self.active_connections))
 
-    def disconnect(self, websocket: WebSocket):
+    def disconnect(self, websocket: WebSocket) -> None:
         if websocket in self.active_connections:
             self.active_connections.remove(websocket)
-            print(f"Client disconnected. Total: {len(self.active_connections)}")
 
-    async def broadcast(self, message: str):
-        for connection in self.active_connections:
+    async def broadcast(self, message: str) -> None:
+        if not self.active_connections:
+            return
+        dead: list[WebSocket] = []
+        for conn in self.active_connections:
             try:
-                await connection.send_text(message)
-            except Exception as e:
-                print(f"Error broadcasting to client: {e}")
-                self.disconnect(connection)
+                await conn.send_text(message)
+            except Exception:
+                dead.append(conn)
+        for conn in dead:
+            self.disconnect(conn)
+
 
 manager = ConnectionManager()
 
-async def market_data_broadcaster():
-    current_price = 2350.00
-    history = []
-    
-    # Pre-fill history with dummy data to satisfy the 50-period AI requirement
-    p = current_price
-    now = datetime.utcnow()
-    for i in range(100, 0, -1):
-        t = now - timedelta(seconds=i)
-        p += (random.random() - 0.5) * 2.0
-        history.append({
-            "timestamp": t,
-            "open": p - 0.5,
-            "high": p + 1.0,
-            "low": p - 1.0,
-            "close": p,
-            "volume": random.random() * 100
-        })
+
+async def _persist_signal(ai_result: dict) -> None:
+    try:
+        async with AsyncSessionLocal() as session:
+            await SignalRepository.create(session, ai_result)
+    except Exception as e:
+        logger.debug("Signal persist skipped: %s", e)
+
+
+async def _persist_trade(trade_record: dict) -> None:
+    try:
+        async with AsyncSessionLocal() as session:
+            await TradeRepository.create(session, trade_record)
+    except Exception as e:
+        logger.debug("Trade persist skipped: %s", e)
+
+
+def _build_frontend_signal(ai_result: dict, current_price: float) -> dict:
+    action = ai_result["action"]
+    signal_type = "LONG" if action == "BUY" else "SHORT" if action == "SELL" else "NEUTRAL"
+    sl = ai_result.get("recommended_sl") or (current_price * 0.995 if signal_type == "LONG" else current_price * 1.005)
+    tp = ai_result.get("recommended_tp") or ai_result["predicted_price"]
+    return {
+        "id": f"ai-sig-{uuid.uuid4().hex[:8]}",
+        "type": signal_type,
+        "action": action,
+        "asset": "XAU/USD",
+        "confidence": ai_result["confidence_score"],
+        "risk_score": ai_result.get("risk_score"),
+        "regime": ai_result.get("regime", {}).get("regime"),
+        "entry": current_price,
+        "target": tp,
+        "stopLoss": round(sl, 2),
+        "timestamp": int(datetime.utcnow().timestamp() * 1000),
+        "active": action in ("BUY", "SELL"),
+        "metrics": ai_result.get("metrics", {}),
+        "trend": ai_result.get("trend", "NEUTRAL"),
+    }
+
+
+async def market_data_broadcaster() -> None:
+    try:
+        await market_engine.bootstrap_history(min_bars=100)
+    except Exception as e:
+        logger.warning("Market bootstrap failed: %s", e)
 
     loop_count = 0
     while True:
         try:
-            # 1. Update Price and History (Always Runs)
-            current_price += (random.random() - 0.48) * 2.0
-            now = datetime.utcnow()
-            
-            # Update history
-            history.append({
-                "timestamp": now,
-                "open": current_price - 0.5,
-                "high": current_price + 1.0,
-                "low": current_price - 1.0,
-                "close": current_price,
-                "volume": random.random() * 100
-            })
-            # Keep last 100 items
-            if len(history) > 100:
-                history.pop(0)
+            bar = await market_engine.refresh_latest()
+            if bar is None:
+                market_engine.append_synthetic_tick()
 
-            # Broadcast Price Update if clients exist
+            current_price = market_engine.current_price
+            now = datetime.utcnow()
+
             if manager.active_connections:
-                price_msg = json.dumps({
+                await manager.broadcast(json.dumps({
                     "type": "PRICE_UPDATE",
                     "price": round(current_price, 2),
-                    "timestamp": now.isoformat()
-                })
-                await manager.broadcast(price_msg)
+                    "timestamp": now.isoformat(),
+                    "ohlcv": market_engine.ohlcv_for_frontend(1)[-1] if market_engine.history else None,
+                }))
 
-            # 2. Generate AI Signal every 10 seconds (Always Runs)
-            if loop_count % 10 == 0:
-                print("Generating AI signal...")
-                df = pd.DataFrame(history).set_index("timestamp")
-                
-                try:
-                    ai_result = await ai_service.analyze_market_data(df)
-                    
-                    signal_type = "LONG" if ai_result["action"] == "BUY" else "SHORT" if ai_result["action"] == "SELL" else "NEUTRAL"
-                    
-                    if signal_type != "NEUTRAL":
-                        print(f"Signal generated successfully: {signal_type} at {current_price}")
-                        # Create a frontend-compatible signal payload
-                        signal_payload = {
-                            "id": f"ai-sig-{uuid.uuid4().hex[:6]}",
-                            "type": signal_type,
-                            "asset": "XAU/USD",
-                            "confidence": ai_result["confidence_score"],
-                            "entry": current_price,
-                            "target": ai_result["predicted_price"],
-                            "stopLoss": current_price * 0.995 if signal_type == "LONG" else current_price * 1.005,
-                            "timestamp": int(now.timestamp() * 1000),
-                            "active": True
-                        }
-                        
-                        # Broadcast if clients exist
+                # Training progress stream
+                ts = training_state.get()
+                if ts.status in ("running", "starting", "completed", "failed"):
+                    await manager.broadcast(json.dumps({
+                        "type": "TRAINING_UPDATE",
+                        "training": ts.to_dict(),
+                    }))
+
+                # Risk metrics every 5s
+                if loop_count % 5 == 0:
+                    account = order_manager.broker.get_account_info()
+                    order_manager.risk_engine.sync_equity(
+                        account.get("balance", 10000), account.get("equity", 10000)
+                    )
+                    await manager.broadcast(json.dumps({
+                        "type": "RISK_UPDATE",
+                        "daily_pnl": order_manager.risk_engine.current_daily_pnl,
+                        "daily_trades": order_manager.risk_engine.daily_trades,
+                        "emergency_shutdown": order_manager.risk_engine.emergency_shutdown,
+                        "risk": order_manager.risk_engine.status_dict(),
+                        "account": account,
+                        "paper_mode": settings.PAPER_TRADING_MODE,
+                        "auto_trade": settings.AUTO_TRADE_ENABLED,
+                        "market": market_engine.health_snapshot(),
+                    }))
+
+            if loop_count % settings.PREDICTION_INTERVAL_SECONDS == 0:
+                df = market_engine.to_dataframe()
+                if len(df) >= 50:
+                    try:
+                        ai_result = await ai_service.analyze_market_data(df)
+                        await _persist_signal(ai_result)
+                        signal_payload = _build_frontend_signal(ai_result, current_price)
+
                         if manager.active_connections:
-                            signal_msg = json.dumps({
+                            await manager.broadcast(json.dumps({
                                 "type": "SIGNAL_UPDATE",
-                                "signals": [signal_payload]
-                            })
-                            await manager.broadcast(signal_msg)
-                            
-                            notify_msg = json.dumps({
-                                "type": "NOTIFICATION",
-                                "title": f"AI Signal: {signal_type}",
-                                "message": f"{signal_payload['asset']} Target: {signal_payload['target']}",
-                                "level": "INFO"
-                            })
-                            await manager.broadcast(notify_msg)
-                        
-                        # Execute Trade Automatically!
-                        print(f"Executing trade for {signal_type}...")
-                        # Run MT5 synchronous execution in a background thread to prevent blocking WebSocket loop
-                        trade_result = await asyncio.to_thread(
-                            order_manager.process_signal, signal_payload, 0.01
-                        )
-                        print(f"Trade Execution Result: {trade_result}")
-                    else:
-                        print("AI Signal: NEUTRAL (no trade)")
-                except Exception as e:
-                    import traceback
-                    print(f"AI Service Error:\n{traceback.format_exc()}")
+                                "signals": [signal_payload],
+                            }))
+
+                        if settings.AUTO_TRADE_ENABLED and signal_payload["action"] in ("BUY", "SELL"):
+                            trade_result = await asyncio.to_thread(
+                                order_manager.process_signal, signal_payload
+                            )
+                            if trade_result.get("trade_record"):
+                                await _persist_trade(trade_result["trade_record"])
+                            if manager.active_connections:
+                                await manager.broadcast(json.dumps({
+                                    "type": "TRADE_UPDATE",
+                                    "trade": trade_result,
+                                }))
+                            logger.info("Auto-trade: %s", trade_result.get("status"))
+
+                        # Periodic analytics snapshot
+                        if loop_count % (settings.PREDICTION_INTERVAL_SECONDS * 6) == 0:
+                            try:
+                                async with AsyncSessionLocal() as session:
+                                    await AnalyticsRepository.save_snapshot(session, {
+                                        **ai_service.analytics,
+                                        "daily_pnl": order_manager.risk_engine.current_daily_pnl,
+                                        "open_positions": order_manager.broker.open_position_count(),
+                                    })
+                            except Exception:
+                                pass
+                    except Exception:
+                        logger.exception("AI analysis error")
 
             loop_count += 1
-                
-        except Exception as e:
-            import traceback
-            print(f"Broadcaster error:\n{traceback.format_exc()}")
-            
-        await asyncio.sleep(1.0) # Broadcast every 1 second
+        except Exception:
+            logger.exception("Broadcaster error")
+
+        await asyncio.sleep(1.0)
+
 
 @router.websocket("/ws/trading")
-async def websocket_trading_endpoint(websocket: WebSocket):
+async def websocket_trading_endpoint(websocket: WebSocket) -> None:
     await manager.connect(websocket)
-    
-    # Send initial data
-    import random
-    from datetime import datetime, timedelta
-    
-    # Mock history
-    history = []
-    p = 2350.00
-    now = datetime.utcnow()
-    for i in range(60, 0, -1):
-        t = now - timedelta(seconds=i)
-        p += (random.random() - 0.48) * 1.5
-        history.append({
-            "time": t.isoformat(),
-            "price": round(p, 2)
-        })
-        
-    initial_signals = [
-        {
-            "id": "sig-1", "type": "LONG", "asset": "XAU/USD",
-            "confidence": 94, "entry": 2345.50, "target": 2360.00,
-            "stopLoss": 2335.00, "timestamp": int(time.time() * 1000), "active": True
-        }
-    ]
-    
+
+    initial_signals = []
+    if ai_service.signal_history:
+        last = ai_service.signal_history[-1]
+        initial_signals = [_build_frontend_signal(last, last["current_price"])]
+
     await websocket.send_text(json.dumps({
         "type": "INITIAL_DATA",
-        "history": history,
-        "signals": initial_signals
+        "history": market_engine.price_points_for_frontend(120),
+        "candles": market_engine.ohlcv_for_frontend(120),
+        "signals": initial_signals,
+        "price": round(market_engine.current_price, 2),
+        "training": training_state.get().to_dict(),
+        "account": order_manager.broker.get_account_info(),
     }))
-    
+
     try:
         while True:
-            # Keep connection alive, listen for client messages if any
             data = await websocket.receive_text()
-            print(f"Received from client: {data}")
+            if data in ("ping", '{"type":"ping"}'):
+                await websocket.send_text(json.dumps({"type": "PONG", "ts": datetime.utcnow().isoformat()}))
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception as e:
-        print(f"WebSocket Error: {e}")
+        logger.error("WebSocket error: %s", e)
         manager.disconnect(websocket)

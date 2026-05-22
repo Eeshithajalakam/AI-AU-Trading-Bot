@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+html.light {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+}
+
+html.light .glass {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
 @theme {
   --color-background: #0a0a0c;
   --color-foreground: #ededed;

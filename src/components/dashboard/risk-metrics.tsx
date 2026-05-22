@@ -1,46 +1,48 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ShieldAlert, TrendingDown, Percent, DollarSign } from "lucide-react";
+import { apiFetch } from "@/lib/api";
+import { useTradingStore } from "@/store/useTradingStore";
+
+interface Analytics {
+  analytics: {
+    total_signals: number;
+    bullish_signals: number;
+    bearish_signals: number;
+    average_confidence: number;
+  };
+}
 
 export function RiskMetrics() {
+  const signals = useTradingStore((s) => s.signals);
+  const currentPrice = useTradingStore((s) => s.currentPrice);
+  const [analytics, setAnalytics] = useState<Analytics["analytics"] | null>(null);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const data = await apiFetch<Analytics>("/api/analytics");
+        setAnalytics(data.analytics);
+      } catch { /* ignore */ }
+    };
+    load();
+    const interval = setInterval(load, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const winRate = analytics
+    ? ((analytics.bullish_signals + analytics.bearish_signals) / Math.max(analytics.total_signals, 1) * 100).toFixed(1)
+    : "—";
+  const avgConf = analytics?.average_confidence?.toFixed(1) ?? "—";
+  const latestConf = signals[0]?.confidence?.toFixed(0) ?? "—";
+
   const metrics = [
-    {
-      label: "Win Rate",
-      value: "68.4%",
-      change: "+2.1%",
-      isPositive: true,
-      icon: Percent,
-      color: "text-indigo-400",
-      bg: "bg-indigo-500/10",
-    },
-    {
-      label: "Max Drawdown",
-      value: "4.2%",
-      change: "-0.5%",
-      isPositive: true,
-      icon: TrendingDown,
-      color: "text-red-400",
-      bg: "bg-red-500/10",
-    },
-    {
-      label: "Risk/Reward",
-      value: "1:2.4",
-      change: "+0.2",
-      isPositive: true,
-      icon: ShieldAlert,
-      color: "text-amber-400",
-      bg: "bg-amber-500/10",
-    },
-    {
-      label: "Daily P&L",
-      value: "$1,666.30",
-      change: "+12.4%",
-      isPositive: true,
-      icon: DollarSign,
-      color: "text-emerald-400",
-      bg: "bg-emerald-500/10",
-    },
+    { label: "AI Confidence", value: `${latestConf}%`, change: `avg ${avgConf}%`, isPositive: true, icon: Percent, color: "text-indigo-400", bg: "bg-indigo-500/10" },
+    { label: "Signal Rate", value: `${winRate}%`, change: `${analytics?.total_signals ?? 0} total`, isPositive: true, icon: TrendingDown, color: "text-amber-400", bg: "bg-amber-500/10" },
+    { label: "Bullish / Bearish", value: `${analytics?.bullish_signals ?? 0} / ${analytics?.bearish_signals ?? 0}`, change: "live", isPositive: true, icon: ShieldAlert, color: "text-emerald-400", bg: "bg-emerald-500/10" },
+    { label: "Current Price", value: `$${currentPrice.toFixed(2)}`, change: "XAU/USD", isPositive: true, icon: DollarSign, color: "text-emerald-400", bg: "bg-emerald-500/10" },
   ];
 
   return (
@@ -59,23 +61,10 @@ export function RiskMetrics() {
             </div>
             <div className="flex items-end justify-between">
               <p className="text-lg font-bold text-white">{metric.value}</p>
-              <span className={`text-xs font-medium ${metric.isPositive ? 'text-emerald-400' : 'text-red-400'}`}>
-                {metric.change}
-              </span>
+              <span className="text-xs font-medium text-slate-500">{metric.change}</span>
             </div>
           </div>
         ))}
-        <div className="col-span-2 mt-2">
-          <div className="p-4 rounded-xl border border-indigo-500/20 bg-indigo-500/5 flex items-start gap-3">
-            <ShieldAlert className="h-5 w-5 text-indigo-400 mt-0.5" />
-            <div>
-              <p className="text-sm font-semibold text-white">Risk Level: Low</p>
-              <p className="text-xs text-slate-400 mt-1">
-                Current exposure is well within predefined limits. Auto-hedging is active.
-              </p>
-            </div>
-          </div>
-        </div>
       </CardContent>
     </Card>
   );

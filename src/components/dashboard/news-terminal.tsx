@@ -26,10 +26,8 @@ export function NewsTerminal() {
   useEffect(() => {
     const fetchNews = async () => {
       try {
-        const res = await fetch("http://localhost:8000/api/news/macro");
-        if (res.ok) {
-          setEnv(await res.json());
-        }
+        const { apiFetch } = await import("@/lib/api");
+        setEnv(await apiFetch<MacroEnvironment>("/api/news/macro"));
       } catch (err) {
         console.error("Failed to fetch macro environment");
       }

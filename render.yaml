@@ -1,0 +1,34 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: ai-au-trading-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: starter
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-au-trading-db
+          property: connectionString
+      - key: AUTO_TRAIN_ON_STARTUP
+        value: "true"
+      - key: AUTO_TRADE_ENABLED
+        value: "true"
+      - key: PAPER_TRADING_MODE
+        value: "true"
+      - key: BACKEND_CORS_ORIGINS
+        value: '["https://ai-au-trading-bot.vercel.app"]'
+      - key: PUBLIC_FRONTEND_URL
+        value: https://ai-au-trading-bot.vercel.app
+
+databases:
+  - name: ai-au-trading-db
+    plan: starter
+    databaseName: trading_db
+    user: trading_user
