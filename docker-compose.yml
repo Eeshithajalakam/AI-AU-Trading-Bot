@@ -37,9 +37,9 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/trading_db
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production}
-      ENVIRONMENT: production
+      ENVIRONMENT: development
       BACKEND_CORS_ORIGINS: '["http://localhost:3000","http://127.0.0.1:3000","http://frontend:3000"]'
-      AUTO_TRAIN_ON_STARTUP: "true"
+      AUTO_TRAIN_ON_STARTUP: "false"
       AUTO_TRADE_ENABLED: "false"
       PAPER_TRADING_MODE: "true"
       MT5_LOGIN: ${MT5_LOGIN:-0}
@@ -48,6 +48,10 @@ services:
       MAX_SPREAD_POINTS: "50"
       TRADE_COOLDOWN_SECONDS: "60"
       MAX_OPEN_TRADES: "3"
+      MAX_DAILY_LOSS_USD: "500"
+      LOG_LEVEL: debug
+      WORKERS: "1"
+      MAX_CONNECTIONS: "5"
     volumes:
       - ./backend/models:/app/models
     depends_on:
