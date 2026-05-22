@@ -2,10 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install minimal system dependencies (optimization for free tier)
 RUN apt-get update && apt-get install -y \
-    build-essential \
-    libpq-dev \
+    libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
@@ -18,7 +17,8 @@ RUN chmod +x entrypoint.sh
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
+# Lightweight healthcheck for free tier
+HEALTHCHECK --interval=60s --timeout=10s --retries=2 \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 
 ENTRYPOINT ["./entrypoint.sh"]
