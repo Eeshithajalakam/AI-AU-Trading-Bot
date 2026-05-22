@@ -1,34 +1,53 @@
 # Render Blueprint — https://render.com/docs/blueprint-spec
+# FREE-TIER ONLY CONFIGURATION
+# No paid databases, no paid web services, no persistent disks
+# Uses external services: Neon (PostgreSQL) + Upstash (Redis)
+
 services:
   - type: web
     name: ai-au-trading-api
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
-    plan: starter
+    plan: free  # FREE TIER ONLY
     healthCheckPath: /health
+    healthCheckInterval: 30
+    maxInstances: 1
+    minInstances: 0  # Spins down after inactivity (free tier behavior)
     envVars:
       - key: ENVIRONMENT
         value: production
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        fromDatabase:
-          name: ai-au-trading-db
-          property: connectionString
+        sync: false
+      - key: REDIS_URL
+        sync: false
       - key: AUTO_TRAIN_ON_STARTUP
-        value: "true"
+        value: "false"  # Disabled for free tier (memory intensive)
       - key: AUTO_TRADE_ENABLED
-        value: "true"
+        value: "false"
       - key: PAPER_TRADING_MODE
         value: "true"
       - key: BACKEND_CORS_ORIGINS
         value: '["https://ai-au-trading-bot.vercel.app"]'
       - key: PUBLIC_FRONTEND_URL
         value: https://ai-au-trading-bot.vercel.app
+      - key: WORKERS
+        value: "1"  # Minimal for free tier
+      - key: MAX_CONNECTIONS
+        value: "5"  # Limited for free tier
+      - key: REDIS_MAX_POOL_SIZE
+        value: "2"
+      - key: LOG_LEVEL
+        value: info
 
-databases:
-  - name: ai-au-trading-db
-    plan: starter
-    databaseName: trading_db
-    user: trading_user
+# NO DATABASES SECTION - Using external Neon PostgreSQL
+# NO PAID SERVICES - Everything is free tier compatible
+
+# Environment Setup Instructions:
+# 1. Create Neon PostgreSQL: https://console.neon.tech (free tier)
+# 2. Create Upstash Redis: https://console.upstash.com (free tier)
+# 3. Set DATABASE_URL from Neon connection string
+# 4. Set REDIS_URL from Upstash connection string
+# 5. Add these as environment variables in Render dashboard
